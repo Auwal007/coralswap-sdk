@@ -157,6 +157,7 @@ export class CoralSwapClient {
     // Handle custom RPC URL(s)
     if (config.rpcUrl) {
       this._rpcUrls = Array.isArray(config.rpcUrl) ? config.rpcUrl : [config.rpcUrl];
+      this.networkConfig = { ...this.networkConfig, rpcUrl: this._rpcUrls[0] };
     } else {
       this._rpcUrls = [this.networkConfig.rpcUrl];
     }
