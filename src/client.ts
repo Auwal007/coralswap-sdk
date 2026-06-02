@@ -110,6 +110,10 @@ export class CoralSwapClient {
     return this._server;
   }
 
+  set server(server: SorobanRpc.Server) {
+    this._server = server;
+  }
+
   /**
    * Rotate to the next available RPC server in the fallback list.
    * @private
@@ -161,6 +165,7 @@ export class CoralSwapClient {
     // Handle custom RPC URL(s)
     if (config.rpcUrl) {
       this._rpcUrls = Array.isArray(config.rpcUrl) ? config.rpcUrl : [config.rpcUrl];
+      this.networkConfig = { ...this.networkConfig, rpcUrl: this._rpcUrls[0] };
     } else {
       this._rpcUrls = [this.networkConfig.rpcUrl];
     }
@@ -604,8 +609,8 @@ export class CoralSwapClient {
       sourceKey,
       enhanced: isEnhanced,
     });
-    const account = await this.withRetry(
-      () => this.server.getAccount(sourceKey),
+    const account = await this.executeWithFallback(
+      (server) => server.getAccount(sourceKey),
       'simulateTransaction_getAccount',
     );
 
@@ -625,8 +630,8 @@ export class CoralSwapClient {
       operationCount: operations.length,
       enhanced: isEnhanced,
     });
-    const sim = await this.withRetry(
-      () => this.server.simulateTransaction(tx),
+    const sim = await this.executeWithFallback(
+      (server) => server.simulateTransaction(tx),
       'simulateTransaction_simulate',
     );
     this.logger?.debug('simulateTransaction (dry-run): completed', {
