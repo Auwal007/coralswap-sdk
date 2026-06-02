@@ -1,6 +1,89 @@
 import { OracleModule, TWAPObservation } from '../src/modules/oracle';
+import { ValidationError, InsufficientLiquidityError } from '../src/errors';
 import { PRECISION } from '../src/config';
-import { InsufficientLiquidityError } from '../src/errors';
+
+const PAIR = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+
+describe('OracleModule (unit)', () => {
+  let mockPair: any;
+  let mockClient: any;
+  let oracle: OracleModule;
+
+  beforeEach(() => {
+    let call = 0;
+    mockPair = {
+      getCumulativePrices: jest.fn().mockImplementation(async () => {
+        // produce deterministic increasing cumulative values and timestamps
+        call += 1;
+        const base = BigInt(call) * 1000n;
+        return {
+          price0CumulativeLast: base,
+          price1CumulativeLast: base * 2n,
+          blockTimestampLast: 100 + call * 10,
+        };
+      }),
+      getTokens: jest.fn().mockResolvedValue({ token0: 'CTOKEN0', token1: 'CTOKEN1' }),
+      getReserves: jest.fn().mockResolvedValue({ reserve0: 100n, reserve1: 200n }),
+    };
+
+    mockClient = {
+      pair: jest.fn().mockReturnValue(mockPair),
+    };
+
+    oracle = new OracleModule(mockClient as any);
+  });
+
+  afterEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('getTWAP() computes time-weighted average price across observations', async () => {
+    // First observation
+    await oracle.observe(PAIR);
+    // The next call inside getTWAP will append a second observation
+    const twap = await oracle.getTWAP(PAIR);
+    expect(twap).not.toBeNull();
+    if (twap) {
+      // price0TWAP = (end - start) / timeElapsed
+      const expected = (twap.endObservation.price0CumulativeLast - twap.startObservation.price0CumulativeLast) / BigInt(twap.timeWindow);
+      expect(twap.price0TWAP).toEqual(expected);
+      expect(twap.timeWindow).toBeGreaterThan(0);
+    }
+  });
+
+  it('computeTWAP() throws ValidationError for inverted or zero time window', () => {
+    const start = { price0CumulativeLast: 2000n, price1CumulativeLast: 4000n, blockTimestampLast: 200 };
+    const end = { price0CumulativeLast: 1000n, price1CumulativeLast: 2000n, blockTimestampLast: 100 };
+    expect(() => oracle.computeTWAP(start as any, end as any)).toThrow(ValidationError);
+  });
+
+  it('observation cache evicts oldest entries when capacity exceeded', async () => {
+    // call observe 130 times to force eviction (module keeps only last 100)
+    for (let i = 0; i < 130; i++) {
+      await oracle.observe(PAIR);
+    }
+
+    const count = oracle.getObservationCount(PAIR);
+    expect(count).toEqual(100);
+  });
+
+  it('computeTWAP() rejects identical timestamps (zero window)', () => {
+    const obs = { price0CumulativeLast: 5000n, price1CumulativeLast: 10000n, blockTimestampLast: 100 };
+    expect(() => oracle.computeTWAP(obs as any, obs as any)).toThrow(ValidationError);
+  });
+
+  it('getSpotPrice() throws InsufficientLiquidityError on zero reserves', async () => {
+    (mockPair.getReserves as jest.Mock).mockResolvedValueOnce({ reserve0: 0n, reserve1: 0n });
+    await expect(oracle.getSpotPrice(PAIR)).rejects.toThrow(InsufficientLiquidityError);
+  });
+
+  it('getTWAP() returns null when insufficient observations exist', async () => {
+    // fresh oracle has no cached observations; getTWAP will take one and return null
+    const freshOracle = new OracleModule(mockClient as any);
+    const maybe = await freshOracle.getTWAP(PAIR);
+    expect(maybe).toBeNull();
+  });
+});
 
 function mockClient(pairOverrides: Record<string, (...args: any[]) => any> = {}) {
   return {

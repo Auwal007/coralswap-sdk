@@ -297,6 +297,7 @@ export class CoralSwapClient {
 
     if (rpcUrl) {
       this._rpcUrls = Array.isArray(rpcUrl) ? rpcUrl : [rpcUrl];
+      this.networkConfig.rpcUrl = this._rpcUrls[0];
     } else {
       this._rpcUrls = [this.networkConfig.rpcUrl];
     }

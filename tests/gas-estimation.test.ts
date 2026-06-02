@@ -45,6 +45,8 @@ function makeFailSimResult(error = 'contract trapped') {
   };
 }
 
+type SimResult = ReturnType<typeof makeSuccessSimResult> | ReturnType<typeof makeFailSimResult>;
+
 // ---------------------------------------------------------------------------
 // estimateGas utility
 // ---------------------------------------------------------------------------
@@ -96,7 +98,7 @@ describe('estimateGas()', () => {
 // SwapModule – estimateOnly
 // ---------------------------------------------------------------------------
 
-function createSwapClient(simResult = makeSuccessSimResult('200')): CoralSwapClient {
+function createSwapClient(simResult: SimResult = makeSuccessSimResult('200')): CoralSwapClient {
   return {
     networkConfig: { networkPassphrase: 'Test SDF Network ; September 2015' },
     config: {},
@@ -146,7 +148,7 @@ describe('SwapModule.execute({ estimateOnly: true })', () => {
 // LiquidityModule – estimateOnly (addLiquidity / removeLiquidity)
 // ---------------------------------------------------------------------------
 
-function createLiquidityClient(simResult = makeSuccessSimResult('300')): CoralSwapClient {
+function createLiquidityClient(simResult: SimResult = makeSuccessSimResult('300')): CoralSwapClient {
   return {
     networkConfig: {},
     config: {},
@@ -225,7 +227,7 @@ describe('LiquidityModule.removeLiquidity({ estimateOnly: true })', () => {
 // FlashLoanModule – estimateOnly
 // ---------------------------------------------------------------------------
 
-function createFlashLoanClient(simResult = makeSuccessSimResult('400')): CoralSwapClient {
+function createFlashLoanClient(simResult: SimResult = makeSuccessSimResult('400')): CoralSwapClient {
   return {
     networkConfig: {},
     config: {},

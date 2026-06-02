@@ -6,6 +6,7 @@ import {
 } from "@/types/flash-loan";
 import { FlashLoanConfig } from "@/types/pool";
 import { GasEstimate } from "@/types/gas";
+import { DEFAULTS } from "@/config";
 import {
   calculateRepayment,
   validateFeeFloor,
@@ -67,12 +68,12 @@ export class FlashLoanModule {
       );
     }
 
-    const feeFloorBps = Number(config.flashFeeFloor);
+    const feeFloorBps = DEFAULTS.flashFeeFloorBps;
 
     if (!validateFeeFloor(config.flashFeeBps, feeFloorBps)) {
       throw new FlashLoanError("Flash loan fee below protocol floor", {
         feeBps: config.flashFeeBps,
-        feeFloor: config.flashFeeFloor,
+        feeFloorBps,
       });
     }
 
@@ -124,10 +125,10 @@ export class FlashLoanModule {
       );
     }
 
-    if (!validateFeeFloor(config.flashFeeBps, Number(config.flashFeeFloor))) {
+    if (!validateFeeFloor(config.flashFeeBps, DEFAULTS.flashFeeFloorBps)) {
       throw new FlashLoanError("Flash loan fee below protocol floor", {
         feeBps: config.flashFeeBps,
-        feeFloor: config.flashFeeFloor,
+        feeFloorBps: DEFAULTS.flashFeeFloorBps,
       });
     }
 
@@ -195,7 +196,11 @@ export class FlashLoanModule {
     } catch (error) {
       const mappedError = mapError(error);
 
-      if (this.isUnavailableError(mappedError)) {
+      if (
+        mappedError instanceof NetworkError ||
+        mappedError instanceof RpcError ||
+        this.isUnavailableError(mappedError)
+      ) {
         return false;
       }
 
