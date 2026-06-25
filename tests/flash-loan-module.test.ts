@@ -1,10 +1,11 @@
 import { CoralSwapClient } from "../src/client";
 import { FlashLoanModule } from "../src/modules/flash-loan";
 import { PairClient } from "../src/contracts/pair";
-import { FlashLoanError, TransactionError } from "../src/errors";
+import { FlashLoanError, TransactionError, FlashLoanFailedError } from "../src/errors";
 import { Network } from "../src/types/common";
 import { FlashLoanConfig } from "../src/types/pool";
-import { xdr } from "@stellar/stellar-sdk";
+import { xdr, Address, nativeToScVal, SorobanRpc } from "@stellar/stellar-sdk";
+import { EventParser, EVENT_TOPICS } from "../src/utils/events";
 
 /**
  * Tests for FlashLoanModule.
@@ -583,3 +584,490 @@ describe("FlashLoanModule", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Flash Loan Event Parsing Tests
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper to build mock ScVal structures for event testing.
+ */
+function symbolVal(s: string): xdr.ScVal {
+  return xdr.ScVal.scvSymbol(s);
+}
+
+function addressVal(addr: string): xdr.ScVal {
+  return nativeToScVal(Address.fromString(addr), { type: "address" });
+}
+
+function i128Val(n: bigint): xdr.ScVal {
+  return nativeToScVal(n, { type: "i128" });
+}
+
+function scMap(entries: [string, xdr.ScVal][]): xdr.ScVal {
+  const mapEntries = entries.map(
+    ([key, val]) => new xdr.ScMapEntry({ key: symbolVal(key), val }),
+  );
+  return xdr.ScVal.scvMap(mapEntries);
+}
+
+/**
+ * Build a mock xdr.DiagnosticEvent with the given topic and data.
+ */
+function makeDiagnosticEvent(
+  topic: string,
+  data: xdr.ScVal,
+  contractAddr: string,
+): xdr.DiagnosticEvent {
+  const contractBuf = Address.fromString(contractAddr).toBuffer();
+  const topics = [symbolVal(topic)];
+  const bodyV0 = new xdr.ContractEventV0({ topics, data });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body = new (xdr.ContractEventBody as any)(0, bodyV0) as xdr.ContractEventBody;
+
+  const contractEvent = new xdr.ContractEvent({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ext: new (xdr.ExtensionPoint as any)(0) as xdr.ExtensionPoint,
+    contractId: contractBuf,
+    type: xdr.ContractEventType.contract(),
+    body,
+  });
+
+  return new xdr.DiagnosticEvent({
+    inSuccessfulContractCall: true,
+    event: contractEvent,
+  });
+}
+
+describe("FlashLoanModule - Event Parsing", () => {
+  const TEST_SECRET =
+    "SB6K2AINTGNYBFX4M7TRPGSKQ5RKNOXXWB7UZUHRYOVTM7REDUGECKZU";
+  const TEST_PAIR_ADDRESS =
+    "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+  const TEST_TOKEN_ADDRESS =
+    "CBQHNAXSI55GX2GN6D67GK7BHVPSLJUGZQEU7WJ5LKR5PNUCGLIMAO4K";
+  const TEST_RECEIVER_ADDRESS =
+    "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+  const TEST_BORROWER_ADDRESS =
+    "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+  let client: CoralSwapClient;
+  let flashLoanModule: FlashLoanModule;
+  let mockPairClient: jest.Mocked<PairClient>;
+
+  beforeEach(() => {
+    client = new CoralSwapClient({
+      network: Network.TESTNET,
+      secretKey: TEST_SECRET,
+    });
+
+    flashLoanModule = new FlashLoanModule(client);
+
+    // Create mock PairClient
+    mockPairClient = {
+      getFlashLoanConfig: jest.fn(),
+      getReserves: jest.fn(),
+      getTokens: jest.fn(),
+      buildFlashLoan: jest.fn(),
+    } as unknown as jest.Mocked<PairClient>;
+
+    // Mock the client.pair() method to return our mock
+    jest.spyOn(client, "pair").mockReturnValue(mockPairClient);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe("execute() with event parsing", () => {
+    const mockConfig: FlashLoanConfig = {
+      flashFeeBps: 9,
+      locked: false,
+      flashFeeFloor: 5n,
+    };
+
+    const mockOperation = {} as xdr.Operation;
+
+    beforeEach(() => {
+      mockPairClient.buildFlashLoan.mockReturnValue(mockOperation);
+    });
+
+    it("includes decoded flash loan event in result on success", async () => {
+      mockPairClient.getFlashLoanConfig.mockResolvedValue(mockConfig);
+
+      const txHash = "test-tx-hash-123";
+      const ledger = 12345;
+
+      // Create a mock flash loan event
+      const flashLoanEventData = scMap([
+        ["borrower", addressVal(TEST_BORROWER_ADDRESS)],
+        ["token", addressVal(TEST_TOKEN_ADDRESS)],
+        ["amount", i128Val(100000n)],
+        ["fee", i128Val(90n)],
+      ]);
+
+      const diagnosticEvent = makeDiagnosticEvent(
+        EVENT_TOPICS.FLASH_LOAN,
+        flashLoanEventData,
+        TEST_PAIR_ADDRESS,
+      );
+
+      const mockSubmitResult = {
+        success: true,
+        txHash,
+        data: { txHash, ledger },
+      };
+
+      jest
+        .spyOn(client, "submitTransaction")
+        .mockResolvedValue(mockSubmitResult);
+
+      // Mock getTransaction to return a response with the diagnostic event
+      const mockTxResponse = {
+        status: "SUCCESS",
+        ledger,
+        resultMetaXdr: {
+          v3: () => ({
+            sorobanMeta: () => ({
+              diagnosticEvents: () => [diagnosticEvent],
+            }),
+          }),
+        },
+      } as unknown as SorobanRpc.Api.GetTransactionResponse;
+
+      jest
+        .spyOn(client.server, "getTransaction")
+        .mockResolvedValue(mockTxResponse);
+
+      const request = {
+        pairAddress: TEST_PAIR_ADDRESS,
+        token: TEST_TOKEN_ADDRESS,
+        amount: 100000n,
+        receiverAddress: TEST_RECEIVER_ADDRESS,
+        callbackData: Buffer.from("test-data"),
+      };
+
+      const result = await flashLoanModule.execute(request);
+
+      expect(result.txHash).toBe(txHash);
+      expect(result.token).toBe(TEST_TOKEN_ADDRESS);
+      expect(result.amount).toBe(100000n);
+      expect(result.fee).toBe(90n);
+      expect(result.ledger).toBe(ledger);
+
+      // Verify event was decoded
+      expect(result.event).toBeDefined();
+      expect(result.event?.type).toBe("FlashLoanExecuted");
+      expect(result.event?.borrowedAmount).toBe(100000n);
+      expect(result.event?.feePaid).toBe(90n);
+      expect(result.event?.callbackAddress).toBe(TEST_BORROWER_ADDRESS);
+    });
+
+    it("returns result without event if event parsing fails gracefully", async () => {
+      mockPairClient.getFlashLoanConfig.mockResolvedValue(mockConfig);
+
+      const txHash = "test-tx-hash-456";
+      const ledger = 12346;
+
+      const mockSubmitResult = {
+        success: true,
+        txHash,
+        data: { txHash, ledger },
+      };
+
+      jest
+        .spyOn(client, "submitTransaction")
+        .mockResolvedValue(mockSubmitResult);
+
+      // Mock getTransaction to throw an error
+      jest
+        .spyOn(client.server, "getTransaction")
+        .mockRejectedValue(new Error("RPC error"));
+
+      const request = {
+        pairAddress: TEST_PAIR_ADDRESS,
+        token: TEST_TOKEN_ADDRESS,
+        amount: 100000n,
+        receiverAddress: TEST_RECEIVER_ADDRESS,
+        callbackData: Buffer.from("test-data"),
+      };
+
+      // Should not throw, but return result without event
+      const result = await flashLoanModule.execute(request);
+
+      expect(result.txHash).toBe(txHash);
+      expect(result.event).toBeUndefined();
+    });
+
+    it("handles transaction with no flash loan events", async () => {
+      mockPairClient.getFlashLoanConfig.mockResolvedValue(mockConfig);
+
+      const txHash = "test-tx-hash-789";
+      const ledger = 12347;
+
+      // Create a different event (not flash loan)
+      const swapEventData = scMap([
+        ["sender", addressVal(TEST_BORROWER_ADDRESS)],
+        ["token_in", addressVal(TEST_TOKEN_ADDRESS)],
+        ["token_out", addressVal(TEST_TOKEN_ADDRESS)],
+        ["amount_in", i128Val(100000n)],
+        ["amount_out", i128Val(99000n)],
+        ["fee_bps", nativeToScVal(30, { type: "u32" })],
+      ]);
+
+      const diagnosticEvent = makeDiagnosticEvent(
+        EVENT_TOPICS.SWAP,
+        swapEventData,
+        TEST_PAIR_ADDRESS,
+      );
+
+      const mockSubmitResult = {
+        success: true,
+        txHash,
+        data: { txHash, ledger },
+      };
+
+      jest
+        .spyOn(client, "submitTransaction")
+        .mockResolvedValue(mockSubmitResult);
+
+      const mockTxResponse = {
+        status: "SUCCESS",
+        ledger,
+        resultMetaXdr: {
+          v3: () => ({
+            sorobanMeta: () => ({
+              diagnosticEvents: () => [diagnosticEvent],
+            }),
+          }),
+        },
+      } as unknown as SorobanRpc.Api.GetTransactionResponse;
+
+      jest
+        .spyOn(client.server, "getTransaction")
+        .mockResolvedValue(mockTxResponse);
+
+      const request = {
+        pairAddress: TEST_PAIR_ADDRESS,
+        token: TEST_TOKEN_ADDRESS,
+        amount: 100000n,
+        receiverAddress: TEST_RECEIVER_ADDRESS,
+        callbackData: Buffer.from("test-data"),
+      };
+
+      const result = await flashLoanModule.execute(request);
+
+      expect(result.txHash).toBe(txHash);
+      expect(result.event).toBeUndefined();
+    });
+
+    it("extracts borrowedAmount and feePaid from decoded event", async () => {
+      mockPairClient.getFlashLoanConfig.mockResolvedValue(mockConfig);
+
+      const txHash = "test-tx-hash-event-fields";
+      const ledger = 12348;
+      const borrowedAmount = 500000n;
+      const feePaid = 450n;
+
+      const flashLoanEventData = scMap([
+        ["borrower", addressVal(TEST_BORROWER_ADDRESS)],
+        ["token", addressVal(TEST_TOKEN_ADDRESS)],
+        ["amount", i128Val(borrowedAmount)],
+        ["fee", i128Val(feePaid)],
+      ]);
+
+      const diagnosticEvent = makeDiagnosticEvent(
+        EVENT_TOPICS.FLASH_LOAN,
+        flashLoanEventData,
+        TEST_PAIR_ADDRESS,
+      );
+
+      const mockSubmitResult = {
+        success: true,
+        txHash,
+        data: { txHash, ledger },
+      };
+
+      jest
+        .spyOn(client, "submitTransaction")
+        .mockResolvedValue(mockSubmitResult);
+
+      const mockTxResponse = {
+        status: "SUCCESS",
+        ledger,
+        resultMetaXdr: {
+          v3: () => ({
+            sorobanMeta: () => ({
+              diagnosticEvents: () => [diagnosticEvent],
+            }),
+          }),
+        },
+      } as unknown as SorobanRpc.Api.GetTransactionResponse;
+
+      jest
+        .spyOn(client.server, "getTransaction")
+        .mockResolvedValue(mockTxResponse);
+
+      const request = {
+        pairAddress: TEST_PAIR_ADDRESS,
+        token: TEST_TOKEN_ADDRESS,
+        amount: borrowedAmount,
+        receiverAddress: TEST_RECEIVER_ADDRESS,
+        callbackData: Buffer.from("test-data"),
+      };
+
+      const result = await flashLoanModule.execute(request);
+
+      // Verify event fields are accessible
+      expect(result.event?.borrowedAmount).toBe(borrowedAmount);
+      expect(result.event?.feePaid).toBe(feePaid);
+      expect(result.event?.callbackAddress).toBe(TEST_BORROWER_ADDRESS);
+    });
+
+    it("handles multiple events and finds flash loan event", async () => {
+      mockPairClient.getFlashLoanConfig.mockResolvedValue(mockConfig);
+
+      const txHash = "test-tx-hash-multi-events";
+      const ledger = 12349;
+
+      // Create multiple events
+      const syncEventData = scMap([
+        ["reserve0", i128Val(1000000n)],
+        ["reserve1", i128Val(2000000n)],
+      ]);
+
+      const flashLoanEventData = scMap([
+        ["borrower", addressVal(TEST_BORROWER_ADDRESS)],
+        ["token", addressVal(TEST_TOKEN_ADDRESS)],
+        ["amount", i128Val(100000n)],
+        ["fee", i128Val(90n)],
+      ]);
+
+      const syncEvent = makeDiagnosticEvent(
+        EVENT_TOPICS.SYNC,
+        syncEventData,
+        TEST_PAIR_ADDRESS,
+      );
+
+      const flashLoanEvent = makeDiagnosticEvent(
+        EVENT_TOPICS.FLASH_LOAN,
+        flashLoanEventData,
+        TEST_PAIR_ADDRESS,
+      );
+
+      const mockSubmitResult = {
+        success: true,
+        txHash,
+        data: { txHash, ledger },
+      };
+
+      jest
+        .spyOn(client, "submitTransaction")
+        .mockResolvedValue(mockSubmitResult);
+
+      const mockTxResponse = {
+        status: "SUCCESS",
+        ledger,
+        resultMetaXdr: {
+          v3: () => ({
+            sorobanMeta: () => ({
+              diagnosticEvents: () => [syncEvent, flashLoanEvent],
+            }),
+          }),
+        },
+      } as unknown as SorobanRpc.Api.GetTransactionResponse;
+
+      jest
+        .spyOn(client.server, "getTransaction")
+        .mockResolvedValue(mockTxResponse);
+
+      const request = {
+        pairAddress: TEST_PAIR_ADDRESS,
+        token: TEST_TOKEN_ADDRESS,
+        amount: 100000n,
+        receiverAddress: TEST_RECEIVER_ADDRESS,
+        callbackData: Buffer.from("test-data"),
+      };
+
+      const result = await flashLoanModule.execute(request);
+
+      // Should find the flash loan event among multiple events
+      expect(result.event).toBeDefined();
+      expect(result.event?.type).toBe("FlashLoanExecuted");
+      expect(result.event?.borrowedAmount).toBe(100000n);
+    });
+
+    it("returns result with event when transaction succeeds", async () => {
+      mockPairClient.getFlashLoanConfig.mockResolvedValue(mockConfig);
+
+      const txHash = "test-tx-success-with-event";
+      const ledger = 12350;
+
+      const flashLoanEventData = scMap([
+        ["borrower", addressVal(TEST_BORROWER_ADDRESS)],
+        ["token", addressVal(TEST_TOKEN_ADDRESS)],
+        ["amount", i128Val(250000n)],
+        ["fee", i128Val(225n)],
+      ]);
+
+      const diagnosticEvent = makeDiagnosticEvent(
+        EVENT_TOPICS.FLASH_LOAN,
+        flashLoanEventData,
+        TEST_PAIR_ADDRESS,
+      );
+
+      const mockSubmitResult = {
+        success: true,
+        txHash,
+        data: { txHash, ledger },
+      };
+
+      jest
+        .spyOn(client, "submitTransaction")
+        .mockResolvedValue(mockSubmitResult);
+
+      const mockTxResponse = {
+        status: "SUCCESS",
+        ledger,
+        resultMetaXdr: {
+          v3: () => ({
+            sorobanMeta: () => ({
+              diagnosticEvents: () => [diagnosticEvent],
+            }),
+          }),
+        },
+      } as unknown as SorobanRpc.Api.GetTransactionResponse;
+
+      jest
+        .spyOn(client.server, "getTransaction")
+        .mockResolvedValue(mockTxResponse);
+
+      const request = {
+        pairAddress: TEST_PAIR_ADDRESS,
+        token: TEST_TOKEN_ADDRESS,
+        amount: 250000n,
+        receiverAddress: TEST_RECEIVER_ADDRESS,
+        callbackData: Buffer.from("test-data"),
+      };
+
+      const result = await flashLoanModule.execute(request);
+
+      // Verify complete result structure
+      expect(result).toMatchObject({
+        txHash,
+        token: TEST_TOKEN_ADDRESS,
+        amount: 250000n,
+        fee: 225n,
+        ledger,
+      });
+
+      expect(result.event).toMatchObject({
+        type: "FlashLoanExecuted",
+        borrowedAmount: 250000n,
+        feePaid: 225n,
+        callbackAddress: TEST_BORROWER_ADDRESS,
+      });
+    });
+  });
+});
+

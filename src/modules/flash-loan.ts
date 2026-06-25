@@ -3,6 +3,7 @@ import {
   FlashLoanRequest,
   FlashLoanResult,
   FlashLoanFeeEstimate,
+  FlashLoanEventData,
 } from "@/types/flash-loan";
 import { FlashLoanConfig } from "@/types/pool";
 import { GasEstimate } from "@/types/gas";
@@ -12,11 +13,16 @@ import {
 } from "@/contracts/flash-receiver";
 import {
   FlashLoanError,
+  FlashLoanFailedError,
+  NetworkError,
+  RpcError,
   TransactionError,
 } from "@/errors";
 import { validateAddress, validatePositiveAmount } from "@/utils/validation";
 import { estimateGas } from "@/utils/gas";
 import { DEFAULTS } from "@/config";
+import { decodeEvents } from "@/utils/events";
+import { SorobanRpc } from "@stellar/stellar-sdk";
 
 /**
  * Flash Loan module -- first-class flash loan support for CoralSwap.
@@ -96,7 +102,8 @@ export class FlashLoanModule {
    * @param options.estimateOnly - When true, returns a fee estimate instead of submitting
    * @returns Receipt containing the transaction hash and flash loan details, or a GasEstimate
    * @throws {FlashLoanError} If flash loans are locked or if fee config is invalid
-   * @throws {TransactionError} If the execution on-chain fails
+   * @throws {FlashLoanFailedError} If the flash loan execution fails on-chain
+   * @throws {TransactionError} If the transaction submission fails
    * @example
    * const result = await client.flashLoans.execute({ pairAddress: 'C...', ... });
    * const gas = await client.flashLoans.execute({ pairAddress: 'C...', ... }, { estimateOnly: true });
@@ -157,12 +164,42 @@ export class FlashLoanModule {
       );
     }
 
+    // Parse events from the transaction result
+    const txHash = result.txHash!;
+    const ledger = result.data!.ledger;
+    let event: FlashLoanEventData | undefined;
+
+    try {
+      // Fetch the full transaction result to decode events
+      const txResult = await this.client.server.getTransaction(txHash);
+      if (txResult.status === "SUCCESS") {
+        const events = decodeEvents(txResult as SorobanRpc.Api.GetSuccessfulTransactionResponse, {
+          contractId: request.pairAddress,
+        });
+
+        // Look for FlashLoanExecuted or FlashLoanFailed events
+        const flashLoanEvent = events.find((e) => e.type === "flash_loan");
+        if (flashLoanEvent && flashLoanEvent.type === "flash_loan") {
+          event = {
+            type: "FlashLoanExecuted",
+            borrowedAmount: flashLoanEvent.amount,
+            feePaid: flashLoanEvent.fee,
+            callbackAddress: flashLoanEvent.borrower,
+          };
+        }
+      }
+    } catch (err) {
+      // Silently ignore event parsing failures to avoid breaking the happy path
+      // The transaction succeeded, but we couldn't decode the events
+    }
+
     return {
-      txHash: result.txHash!,
+      txHash,
       token: request.token,
       amount: request.amount,
       fee: feeEstimate.feeAmount,
-      ledger: result.data!.ledger,
+      ledger,
+      event,
     };
   }
 

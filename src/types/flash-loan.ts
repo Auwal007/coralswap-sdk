@@ -15,6 +15,20 @@ export interface FlashLoanRequest {
 }
 
 /**
+ * Flash loan event emitted by the pair contract.
+ */
+export interface FlashLoanEventData {
+  /** Type of flash loan event */
+  type: 'FlashLoanExecuted' | 'FlashLoanFailed';
+  /** Amount of tokens borrowed */
+  borrowedAmount: bigint | string;
+  /** Fee paid for the flash loan */
+  feePaid: bigint | string;
+  /** Address of the callback receiver contract */
+  callbackAddress: string;
+}
+
+/**
  * Flash loan execution result.
  */
 export interface FlashLoanResult {
@@ -28,6 +42,8 @@ export interface FlashLoanResult {
   fee: bigint;
   /** Ledger sequence number */
   ledger: number;
+  /** Decoded flash loan event from transaction */
+  event?: FlashLoanEventData;
 }
 
 /**

@@ -141,6 +141,7 @@ export {
   PairNotFoundError,
   ValidationError,
   FlashLoanError,
+  FlashLoanFailedError,
   CircuitBreakerError,
   SignerError,
   mapError,

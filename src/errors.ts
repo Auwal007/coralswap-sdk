@@ -161,6 +161,30 @@ export class FlashLoanError extends CoralSwapSDKError {
 }
 
 /**
+ * Flash loan execution failed on-chain.
+ */
+export class FlashLoanFailedError extends FlashLoanError {
+  readonly txHash?: string;
+  readonly event?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    txHash?: string,
+    event?: Record<string, unknown>,
+    details?: Record<string, unknown>,
+  ) {
+    super(message, {
+      txHash,
+      event,
+      ...details,
+    });
+    this.name = "FlashLoanFailedError";
+    this.txHash = txHash;
+    this.event = event;
+  }
+}
+
+/**
  * Circuit breaker triggered (pool is paused).
  */
 export class CircuitBreakerError extends CoralSwapSDKError {
