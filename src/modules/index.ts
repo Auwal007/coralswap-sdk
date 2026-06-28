@@ -6,6 +6,15 @@ export { OracleModule, TWAPObservation, TWAPResult } from './oracle';
 export { TokenListModule } from './tokens';
 export { FactoryModule } from './factory';
 export { RouterModule } from './router';
+export {
+  getOpenOrders,
+  getOrderSummary,
+  getTradeHistory,
+  getLimitOrders,
+  getDcaOrders,
+  getStopLossOrders,
+} from './order-book';
+export { getQuorumStatus } from './governance';
 export { GovernanceModule } from './governance';
 export { TaxReportingModule } from './tax-reporting';
 export type { ExportOptions, TaxReportRow } from './tax-reporting';
