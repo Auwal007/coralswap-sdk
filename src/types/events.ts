@@ -152,4 +152,7 @@ export type CoralSwapEvent =
   | LiquidityEvent
   | FlashLoanContractEvent
   | FeeUpdateEvent
-  | ProposalEvent;
+  | ProposalEvent
+  | MintEvent
+  | BurnEvent
+  | SyncEvent;

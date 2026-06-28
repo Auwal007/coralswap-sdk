@@ -3,7 +3,7 @@ import {
   FlashLoanRequest,
   FlashLoanResult,
   FlashLoanFeeEstimate,
-  FlashLoanEventData,
+  FlashLoanExecutedEvent,
 } from "@/types/flash-loan";
 import { FlashLoanConfig } from "@/types/pool";
 import { GasEstimate } from "@/types/gas";
@@ -164,7 +164,7 @@ export class FlashLoanModule {
     // Parse events from the transaction result
     const txHash = result.txHash!;
     const ledger = result.data!.ledger;
-    let event: FlashLoanEventData | undefined;
+    let event: FlashLoanExecutedEvent | undefined;
 
     try {
       // Fetch the full transaction result to decode events
@@ -182,6 +182,7 @@ export class FlashLoanModule {
             borrowedAmount: flashLoanEvent.amount,
             feePaid: flashLoanEvent.fee,
             callbackAddress: flashLoanEvent.borrower,
+            token: request.token,
           };
         }
       }

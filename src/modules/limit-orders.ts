@@ -6,10 +6,6 @@ import {
   nativeToScVal,
 } from '@stellar/stellar-sdk';
 import { CoralSwapClient } from '@/client';
-<<<<<<< ours
-import { OrderStatus, LimitOrderState } from '@/types/limit-orders';
-import { withRetry, RetryOptions } from '@/utils/retry';
-=======
 import {
   OrderStatus,
   LimitOrderState,
@@ -21,7 +17,6 @@ import {
 import { withRetry, RetryOptions } from '@/utils/retry';
 import { OrderNotFoundError, InvalidOperationError, ValidationError } from '@/errors';
 import { validateAddress, validatePositiveAmount } from '@/utils/validation';
->>>>>>> theirs
 export function scValToString(val: xdr.ScVal | undefined): string {
   if (!val) throw new Error("Missing field");
   const tag = val.switch().name;
@@ -47,8 +42,6 @@ export function scValToOptionalNumber(val: xdr.ScVal | undefined): number | unde
   return scValToNumber(val);
 }
 
-<<<<<<< ours
-=======
 export function scValToBigInt(val: xdr.ScVal | undefined): bigint {
   if (!val) throw new Error("Missing field");
   const tag = val.switch().name;
@@ -90,7 +83,6 @@ export function parseCancelResult(result: xdr.ScVal): { refundedAmount: bigint; 
   return { refundedAmount, filledAmount };
 }
 
->>>>>>> theirs
 export function parseOrderStatus(result: xdr.ScVal): OrderStatus {
   const map = result.map();
   if (!map) throw new Error("Invalid order status: expected ScMap");
@@ -127,8 +119,6 @@ export function parseOrderStatus(result: xdr.ScVal): OrderStatus {
   };
 }
 
-<<<<<<< ours
-=======
 export function scValToStringVec(val: xdr.ScVal | undefined): string[] {
   if (!val) throw new Error("Missing field");
   if (val.switch().name !== 'scvVec') throw new Error("Expected Vec");
@@ -184,7 +174,6 @@ export function parseOrderDetails(result: xdr.ScVal): LimitOrderDetails {
   };
 }
 
->>>>>>> theirs
 export class LimitOrderModule {
   private client: CoralSwapClient;
   private contract: Contract;
@@ -280,8 +269,6 @@ export class LimitOrderModule {
       clearInterval(timer);
     };
   }
-<<<<<<< ours
-=======
 
   async cancelLimitOrder(orderId: string, signer?: string): Promise<CancelResult> {
     if (!orderId || typeof orderId !== 'string') {
@@ -514,5 +501,4 @@ export class LimitOrderModule {
       (o) => o.status.state === 'open' || o.status.state === 'partial',
     );
   }
->>>>>>> theirs
 }

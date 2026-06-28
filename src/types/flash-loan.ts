@@ -55,7 +55,7 @@ export interface FlashLoanResult {
   /** Ledger sequence number */
   ledger: number;
   /** Decoded FlashLoanExecuted event from the transaction. */
-  event: FlashLoanExecutedEvent;
+  event?: FlashLoanExecutedEvent;
 }
 
 /**

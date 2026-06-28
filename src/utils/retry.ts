@@ -159,8 +159,6 @@ function normalizeRetryConfig(options: RetryOptions): RetryConfig {
   };
 }
 
-<<<<<<< ours
-=======
 /**
  * Helper to execute an async function with exponential backoff retry.
  *
@@ -171,7 +169,6 @@ function normalizeRetryConfig(options: RetryOptions): RetryConfig {
  * @returns The result of the function
  */
 
->>>>>>> theirs
 export async function withRetry<T>(
   fn: () => Promise<T>,
   options: RetryOptions,
@@ -199,21 +196,8 @@ export async function withRetry<T>(
         lastError = err;
         if (!isRetryable(err) || attempt === maxRetries) throw err;
 
-<<<<<<< HEAD
-        const retryable = isRetryable(err);
-        if (!retryable || attempt === maxRetries) {
-          throw err;
-        }
-
-        const rawBackoff =
-          config.baseDelayMs * Math.pow(config.backoffMultiplier, attempt);
-        const backoff = Math.min(config.maxDelayMs, rawBackoff);
-        const jitter = backoff * 0.15 * (Math.random() * 2 - 1);
-        const delay = Math.min(config.maxDelayMs, Math.max(0, backoff + jitter));
-=======
         const rawBackoff = config.baseDelayMs * Math.pow(config.backoffMultiplier, attempt);
         const delay = Math.min(config.maxDelayMs, rawBackoff);
->>>>>>> 256b253 (update)
 
         logger?.debug(`${label}: retrying after ${Math.round(delay)}ms`, {
           attempt: attempt + 1,

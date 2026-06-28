@@ -1,7 +1,3 @@
-<<<<<<< ours
-import { SorobanRpc, xdr } from '@stellar/stellar-sdk';
-import { LimitOrderModule, parseOrderStatus } from '../src/modules/limit-orders';
-=======
 import { SorobanRpc, xdr, nativeToScVal } from '@stellar/stellar-sdk';
 import {
   LimitOrderModule,
@@ -11,7 +7,6 @@ import {
   scValToStringVec,
 } from '../src/modules/limit-orders';
 import { OrderNotFoundError, InvalidOperationError, ValidationError } from '../src/errors';
->>>>>>> theirs
 
 function makeScMap(fields: Record<string, xdr.ScVal>): xdr.ScVal {
   const entries = Object.entries(fields).map(([key, val]) =>
@@ -334,8 +329,6 @@ describe('LimitOrderModule', () => {
       );
     }, 10000);
   });
-<<<<<<< ours
-=======
 
   describe('parseCancelResult', () => {
     it('parses refunded and filled amounts from a cancel result', () => {
@@ -819,5 +812,4 @@ describe('LimitOrderModule', () => {
       await expect(module.getOpenOrders('')).rejects.toThrow();
     });
   });
->>>>>>> theirs
 });

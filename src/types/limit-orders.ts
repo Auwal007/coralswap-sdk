@@ -6,8 +6,6 @@ export interface OrderStatus {
   executionPrice?: number;
   filledAt?: number;
 }
-<<<<<<< ours
-=======
 
 export interface CancelResult {
   refundedAmount: bigint;
@@ -35,4 +33,3 @@ export interface LimitOrderDetails {
 export interface PlaceLimitOrderResult {
   orderId: string;
 }
->>>>>>> theirs

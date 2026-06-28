@@ -246,59 +246,42 @@ export class SignerError extends CoralSwapSDKError {
 }
 
 /**
-<<<<<<< ours
- * Cooldown period has not elapsed for unstaking.
- *
- * Thrown when {@link StakingModule.unstake} is called while
- * the staker's position is still in its cooldown window.
- */
-export class CooldownError extends CoralSwapSDKError {
-  readonly cooldownEnd: number;
-  readonly canWithdrawAt: Date;
-
-  constructor(cooldownEnd: number) {
-    const canWithdrawAt = new Date(cooldownEnd * 1000);
-    super(
-      "COOLDOWN_ACTIVE",
-      `Cannot unstake: cooldown period has not elapsed. Withdrawal available at ${canWithdrawAt.toISOString()}`,
-      {
-        cooldownEnd,
-        canWithdrawAt: canWithdrawAt.toISOString(),
-      },
-    );
-    this.name = "CooldownError";
-    this.cooldownEnd = cooldownEnd;
-    this.canWithdrawAt = canWithdrawAt;
-=======
  * Order not found or already cancelled.
  */
 export class OrderNotFoundError extends CoralSwapSDKError {
   constructor(orderId: string) {
     super("ORDER_NOT_FOUND", `Order ${orderId} not found or has been cancelled`, { orderId });
     this.name = "OrderNotFoundError";
->>>>>>> theirs
   }
 }
 
 /**
-<<<<<<< ours
- * General staking operation error.
- *
- * Used for staking-specific failures such as attempting to claim
- * zero rewards or staking with insufficient balance.
- */
-export class StakingError extends CoralSwapSDKError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super("STAKING_ERROR", message, details);
-    this.name = "StakingError";
-=======
  * Invalid operation attempted (e.g. cancelling a filled order).
  */
 export class InvalidOperationError extends CoralSwapSDKError {
   constructor(message: string, details?: Record<string, unknown>) {
     super("INVALID_OPERATION", message, details);
     this.name = "InvalidOperationError";
->>>>>>> theirs
+  }
+}
+
+/**
+ * Staking-specific error (e.g. no rewards pending).
+ */
+export class StakingError extends CoralSwapSDKError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super("STAKING_ERROR", message, details);
+    this.name = "StakingError";
+  }
+}
+
+/**
+ * Cooldown period has not elapsed.
+ */
+export class CooldownError extends CoralSwapSDKError {
+  constructor(cooldownEnd: bigint) {
+    super("COOLDOWN_ERROR", `Cooldown period active until block ${cooldownEnd}`, { cooldownEnd });
+    this.name = "CooldownError";
   }
 }
 

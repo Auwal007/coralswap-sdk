@@ -2,7 +2,8 @@ import { CoralSwapClient } from '../client';
 import { TradeType } from '../types/common';
 import { SwapRequest, SwapQuote, SwapResult, HopResult } from '../types/swap';
 import { PRECISION, DEFAULTS } from '../config';
-import { PairNotFoundError, ValidationError, InsufficientLiquidityError } from '../errors';
+import { PairNotFoundError, ValidationError, InsufficientLiquidityError, TransactionError } from '../errors';
+import { PairClient } from '@/contracts/pair';
 
 /**
  * Swap module -- builds, quotes, and executes token swaps.
@@ -265,7 +266,7 @@ export class SwapModule {
    *   totalFeeAmount = sum of per-hop fee amounts (denominated in each hop's tokenIn)
    *   compoundImpact = 1 - product((1 - impact_i/10000)) expressed in bps
    */
-  private async getMultiHopQuote(request: SwapRequest, path: string[]): Promise<SwapQuote> {
+  async getMultiHopQuote(request: SwapRequest, path: string[]): Promise<SwapQuote> {
     if (request.tradeType !== TradeType.EXACT_IN) {
       // Exact-out multi-hop requires reverse path computation; not supported in v1.
       throw new ValidationError(
@@ -352,6 +353,56 @@ export class SwapModule {
       });
 
       currentAmountIn = amountOut;
+    }
+
+    return hops;
+  }
+
+  /**
+   * Compute hops in reverse (given amountOut, find required amountIn).
+   */
+  async computeHopsReverse(amountOut: bigint, path: string[]): Promise<HopResult[]> {
+    const hops: HopResult[] = [];
+    let currentAmountOut = amountOut;
+
+    for (let i = path.length - 1; i > 0; i--) {
+      const tokenIn = path[i - 1];
+      const tokenOut = path[i];
+
+      const pairAddress = await this.client.getPairAddress(tokenIn, tokenOut);
+      if (!pairAddress) {
+        throw new PairNotFoundError(tokenIn, tokenOut);
+      }
+
+      const pair = this.client.pair(pairAddress);
+      const [reserves, feeBps] = await Promise.all([
+        pair.getReserves(),
+        pair.getDynamicFee(),
+      ]);
+
+      const isToken0In = await this.isToken0(pair, tokenIn);
+      const reserveIn = isToken0In ? reserves.reserve0 : reserves.reserve1;
+      const reserveOut = isToken0In ? reserves.reserve1 : reserves.reserve0;
+
+      if (reserveIn === 0n || reserveOut === 0n) {
+        throw new InsufficientLiquidityError(pairAddress, { tokenIn, tokenOut });
+      }
+
+      const amountIn = this.getAmountIn(currentAmountOut, reserveIn, reserveOut, feeBps);
+      const feeAmount = (amountIn * BigInt(feeBps)) / PRECISION.BPS_DENOMINATOR;
+      const priceImpactBps = this.calculatePriceImpact(amountIn, currentAmountOut, reserveIn, reserveOut);
+
+      hops.unshift({
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut: currentAmountOut,
+        feeBps,
+        feeAmount,
+        priceImpactBps,
+      });
+
+      currentAmountOut = amountIn;
     }
 
     return hops;
