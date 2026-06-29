@@ -66,6 +66,8 @@ export {
   FlashLoanModule,
   FeeModule,
   OracleModule,
+  PortfolioModule,
+  RiskMetricsModule,
   TokenListModule,
   RouterModule,
   TreasuryModule,
