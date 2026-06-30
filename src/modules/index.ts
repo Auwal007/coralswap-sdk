@@ -16,3 +16,5 @@ export { WebhookModule } from './webhooks';
 export { TaxReportingModule } from './tax-reporting';
 export { RiskMetricsModule } from './risk-metrics';
 export { GovernanceModule } from './governance';
+export { PortfolioModule } from './portfolio';
+export type { PortfolioModuleOptions } from './portfolio';
