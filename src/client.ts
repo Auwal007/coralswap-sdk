@@ -45,7 +45,7 @@ export class CoralSwapClient {
   private _factory: FactoryClient | null = null;
   private _router: RouterClient | null = null;
   private _factoryModule: FactoryModule | null = null;
-  private _portfolioModule: PortfolioModule | null = null;
+  private _portfolio: PortfolioModule | null = null;
   private _poller: TransactionPoller | null = null;
   private readonly logger?: Logger;
 
@@ -376,10 +376,10 @@ export class CoralSwapClient {
    * Access the Portfolio module.
    */
   get portfolio(): PortfolioModule {
-    if (!this._portfolioModule) {
-      this._portfolioModule = new PortfolioModule(this);
+    if (!this._portfolio) {
+      this._portfolio = new PortfolioModule(this);
     }
-    return this._portfolioModule;
+    return this._portfolio;
   }
 
   /**

@@ -24,6 +24,6 @@ module.exports = {
     ],
   },
   transformIgnorePatterns: [
-    '/node_modules/(?!(uint8array-extras|@stellar/stellar-sdk|@noble/hashes|@noble/ed25519)/)',
+    'node_modules/(?!(uint8array-extras|@stellar/stellar-sdk|@noble/hashes|@noble/ed25519|zod)/)',
   ],
 };
